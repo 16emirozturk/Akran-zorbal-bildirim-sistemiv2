@@ -8,7 +8,6 @@ CSS = """
 .stApp { background:#f4f6f8; color:var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 .block-container { padding-top:1rem; max-width:1250px; }
-[data-testid="stSidebar"] { display:none; }
 h1,h2,h3 { color:#17263c; letter-spacing:-.025em; }
 :focus-visible { outline:3px solid #3d78b5 !important; outline-offset:2px; }
 
@@ -65,6 +64,22 @@ div[data-testid="stMetric"], div[data-testid="stForm"] { background:#fff; border
 .access-panel { padding:1.1rem; border:1px solid #dbe5f1; border-radius:14px; background:#fff; }
 @media (max-width:700px) { .hero { padding:1.4rem 1.1rem; } }
 @media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+
+/* kurumsal yan panel */
+[data-testid="stSidebar"] { background:#12263f; border-right:1px solid #0d1c30; }
+[data-testid="stSidebar"] * { color:#dbe6f3; }
+[data-testid="stSidebar"] .top-brand-name { color:#fff; }
+[data-testid="stSidebar"] .top-brand-sub { color:#8fa6c2; }
+[data-testid="stSidebar"] .brand-mark { background:#315f96; border:1px solid #4a78ad; }
+.nav-title { font-size:.66rem; font-weight:800; letter-spacing:.16em; color:#8fa6c2 !important; margin:1.1rem 0 .3rem; }
+[data-testid="stSidebar"] .stButton > button { justify-content:flex-start; background:transparent; border:0; box-shadow:none;
+  color:#dbe6f3; font-weight:600; padding:.45rem .7rem; border-radius:8px; margin-bottom:2px; }
+[data-testid="stSidebar"] .stButton > button:hover { background:rgba(255,255,255,.09); }
+[data-testid="stSidebar"] .stButton > button[kind="primary"] { background:#315f96; color:#fff; box-shadow:inset 3px 0 0 #8fc1ff; }
+.topbar { display:flex; justify-content:space-between; align-items:center; padding:.2rem 0 .7rem;
+  border-bottom:1px solid var(--line); margin-bottom:.8rem; }
+.crumb { color:#5b6b7e; font-size:.88rem; } .crumb span { margin:0 .35rem; color:#a8b4c2; } .crumb b { color:#17263c; }
+div[data-testid="stMetric"] { box-shadow:0 1px 2px rgba(23,44,71,.05); }
 </style>
 """
 

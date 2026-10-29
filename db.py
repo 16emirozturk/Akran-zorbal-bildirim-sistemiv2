@@ -51,6 +51,11 @@ def _saat_farki(baslangic: str, bitis: str) -> float:
     return (datetime.strptime(bitis, _ZAMAN_BICIMI) - datetime.strptime(baslangic, _ZAMAN_BICIMI)).total_seconds() / 3600
 
 
+def gecen_saat(zaman: str) -> float:
+    """Verilen zaman damgasından bu yana geçen saat."""
+    return _saat_farki(zaman, simdi())
+
+
 @contextmanager
 def baglanti():
     conn = sqlite3.connect(DB_YOLU, timeout=10)

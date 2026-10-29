@@ -21,7 +21,7 @@ import stil
 from sabitler import (ACIL_HATLAR, BIRIMLER, DURUMLAR, ONCELIK_SIRASI, ONCELIKLER, OLAY_TURLERI,
                       ORTAMLAR, SINIFLAR, TEKRARLAR, ZAMANLAR)
 
-st.set_page_config(page_title="Güvenli Okul", page_icon="🛡️", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Güvenli Okul", page_icon="🛡️", layout="wide", initial_sidebar_state="expanded")
 stil.uygula()
 
 # ------------------------------------------------------------------ ayarlar
@@ -32,6 +32,7 @@ GLOBAL_HATALI_ESIK = 20              # tüm oturumlarda 15 dakikadaki hatalı gi
 FORM_PENCERE_SN, FORM_PENCERE_MAKS = 600, 5   # bildirim spamına karşı oturum başına sınır
 SORGU_PENCERE_SN, SORGU_MAKS = 300, 10        # takip kodu tahminine karşı sınır
 ISTATISTIKLER_HERKESE_ACIK = False
+SLA_SAAT = 24                        # ilk incelemeye alınmayan kayıt bu süreden sonra "gecikmiş" sayılır
 
 ss = st.session_state
 
@@ -147,6 +148,17 @@ def sayfa_genel_bakis() -> None:
         desteklemek için tasarlandı.</p></div>""",
         unsafe_allow_html=True,
     )
+    if ss.yonetici_giris:
+        kay = db.kayitlari_getir()
+        acik = [k for k in kay if k["durum"] != "Sonuçlandırıldı"]
+        st.subheader("Yönetici özeti")
+        o = st.columns(4)
+        o[0].metric("Açık kayıt", len(acik))
+        o[1].metric("Yüksek/Acil sinyal (açık)", sum(k["oncelik"] in ("Acil", "Yüksek") for k in acik))
+        o[2].metric(f"{SLA_SAAT} sa. aşan bekleyen",
+                    sum(k["durum"] == "İnceleme bekliyor" and db.gecen_saat(k["olusturma_zamani"]) > SLA_SAAT for k in kay))
+        o[3].metric("Toplam kayıt", len(kay))
+        st.button("İnceleme kuyruğunu aç", type="primary", on_click=sayfaya_git, args=("Bildirim inceleme",), key="g_kuyruk")
     st.markdown(acil_hat_html(), unsafe_allow_html=True)
     if DEMO_MODU:
         st.info("Bu uygulama bağımsız bir çalışma alanıdır; gerçek öğrenci bilgileri girmeyin.")
@@ -409,7 +421,9 @@ def _inceleme_formlari(k: dict) -> None:
 def _kayitlar_sekmesi(kayitlar: list[dict]) -> None:
     sayac = {d: sum(k["durum"] == d for k in kayitlar) for d in DURUMLAR}
     acil = sum(k["oncelik"] in ("Acil", "Yüksek") and k["durum"] != "Sonuçlandırıldı" for k in kayitlar)
-    m1, m2, m3, m4, m5 = st.columns(5)
+    gecikmis = sum(k["durum"] == "İnceleme bekliyor" and db.gecen_saat(k["olusturma_zamani"]) > SLA_SAAT for k in kayitlar)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m6.metric(f"{SLA_SAAT} sa. aşan bekleyen", gecikmis)
     m1.metric("Toplam kayıt", len(kayitlar))
     m2.metric("İlk inceleme", sayac["İnceleme bekliyor"])
     m3.metric("Aktif takip", sayac["İnceleniyor"] + sayac["Takip gerekiyor"])
@@ -449,7 +463,9 @@ def _kayitlar_sekmesi(kayitlar: list[dict]) -> None:
             st.info("Bu filtrelerle eşleşen kayıt yok.")
             return
         secenekler = [k["takip_no"] for k in gorunen]
-        etiket = {k["takip_no"]: f"{k['takip_no']} · {k['olay_turu']} · {k['oncelik']} · {k['durum']}" for k in gorunen}
+        etiket = {k["takip_no"]: f"{k['takip_no']} · {k['olay_turu']} · {k['oncelik']} · {k['durum']}"
+                  + (" · GECİKMİŞ" if k["durum"] == "İnceleme bekliyor" and db.gecen_saat(k["olusturma_zamani"]) > SLA_SAAT else "")
+                  for k in gorunen}
         if ss.get("inceleme_secili") not in secenekler:
             ss["inceleme_secili"] = secenekler[0]   # widget oluşturulmadan ÖNCE atama güvenlidir
         secili_no = st.selectbox("Kayıt seç", secenekler, key="inceleme_secili", format_func=etiket.get)
@@ -477,7 +493,11 @@ def sayfa_inceleme() -> None:
     with sekme2:
         st.caption("Girişler, başarısız denemeler, dışa aktarımlar ve silme işlemleri burada izlenir.")
         satirlar = db.denetim_getir()
-        st.dataframe(satirlar, hide_index=True) if satirlar else st.info("Henüz denetim kaydı yok.")
+        if satirlar:
+            st.dataframe([{"Zaman": r["zaman"], "Kullanıcı": r["aktor"], "İşlem": r["islem"],
+                           "Ayrıntı": r["ayrinti"]} for r in satirlar], hide_index=True)
+        else:
+            st.info("Henüz denetim kaydı yok.")
     with sekme3:
         st.subheader("Dışa aktarım")
         kimlik = st.checkbox("Kimlik bilgilerini (ad, soyad, sınıf) dahil et", value=False,
@@ -666,16 +686,40 @@ SAYFALAR = {
 
 oturum_denetle()
 
-sol, sag = st.columns([4, 1])
-with sol:
+NAV = (
+    ("KULLANICI", (("Genel bakış", "dashboard"), ("Yeni bildirim", "edit_note"), ("Bildirim sorgula", "search"))),
+    ("YÖNETİM", (("Yönetici girişi", "login"), ("Bildirim inceleme", "inbox"), ("İstatistikler", "bar_chart"))),
+    ("KURUMSAL", (("Araştırma ve test", "science"), ("Güvenli kullanım", "verified_user"))),
+)
+KORUMALI = {"Bildirim inceleme", "İstatistikler"}
+
+if ss.get("ana_menu") not in SAYFALAR:
+    ss["ana_menu"] = "Genel bakış"
+secili_sayfa = ss["ana_menu"]
+
+with st.sidebar:
     st.markdown("<div class='top-brand'><div class='brand-mark'>GO</div><div><div class='top-brand-name'>Güvenli Okul"
                 "</div><div class='top-brand-sub'>Bildirim ve takip platformu</div></div></div>", unsafe_allow_html=True)
-with sag:
+    for baslik, ogeler in NAV:
+        st.markdown(f"<div class='nav-title'>{baslik}</div>", unsafe_allow_html=True)
+        for ad, ikon in ogeler:
+            kilit = ad in KORUMALI and not ss.yonetici_giris
+            st.button(ad, key=f"nav_{ad}", icon=":material/lock:" if kilit else f":material/{ikon}:",
+                      type="primary" if ad == secili_sayfa else "secondary", on_click=sayfaya_git, args=(ad,))
+    st.markdown("<div class='nav-title'>OTURUM</div>", unsafe_allow_html=True)
     if ss.yonetici_giris:
-        st.caption("Yönetici oturumu açık")
-        st.button("Oturumu kapat", on_click=oturumu_kapat, key="oturum_kapat")
+        st.caption(f"Yönetici: {ss.yonetici_adi}")
+        st.button("Oturumu kapat", on_click=oturumu_kapat, key="oturum_kapat", icon=":material/logout:")
+    else:
+        st.caption("Ziyaretçi (giriş yapılmadı)")
+    st.caption("Acil: 112 · 155 · 183")
+    st.caption(f"Sürüm 2.0 · Algılayıcı {ht.SURUM}")
 
-secili_sayfa = st.radio("Ana menü", list(SAYFALAR), horizontal=True, label_visibility="collapsed", key="ana_menu")
+st.markdown(
+    f"<div class='topbar'><div class='crumb'>Güvenli Okul <span>/</span> <b>{html.escape(secili_sayfa)}</b></div>"
+    f"<div class='pills'>{pill('DEMO' if DEMO_MODU else 'PİLOT', 'prio-mid')}"
+    f"{pill('Yönetici' if ss.yonetici_giris else 'Ziyaretçi', 'status-active' if ss.yonetici_giris else 'prio-none')}</div></div>",
+    unsafe_allow_html=True)
 if DEMO_MODU:
     st.markdown("<div class='notice-bar'><span class='notice-dot'></span><span>Bağımsız çalışma alanı · Gerçek okul "
                 "sistemine bağlı değildir. Gerçek kişisel veri girmeyin.</span></div>", unsafe_allow_html=True)
